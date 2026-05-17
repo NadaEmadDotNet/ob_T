@@ -21,6 +21,7 @@ router.route('/')
 
 
 router.route('/:id')
+//.get(getAllObligations)
 .get(getSingleObligation)
 .patch(patchObligation)
 .put(updateObligation)

@@ -25,8 +25,10 @@ const protect = (req, res, next) => {
     // attach user to request
     req.user = {
       id: decoded.userId,
-    };
+            email: decoded.email,
 
+    };
+//console.log("Decoded User:", req.user);
     next();
   } catch (error) {
     return res.status(401).json({
@@ -37,4 +39,3 @@ const protect = (req, res, next) => {
 
 module.exports = protect;
 
-module.exports = protect;

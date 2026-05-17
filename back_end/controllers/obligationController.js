@@ -33,8 +33,20 @@ try {
     message: error.message,
     });
 }
+}; 
+// get all obligation
+const getUserObligations = async (req, res) => {
+  try {
+    const obligations = await Obligation.find({ userId: req.user.id });
+    res.status(200).json({
+      success: true,
+      count: obligations.length,
+      obligations,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
-
 
 // GET ALL OBLIGATIONS + FILTER + SEARCH
 const getAllObligations = async (req, res) => {
@@ -100,8 +112,9 @@ try {
 
 
 // GET SINGLE OBLIGATION
-const getSingleObligation = async (req, res) => {
+const getSingleObligation =async (req, res) => {
 try {
+    
     const { id } = req.params;
 
 
