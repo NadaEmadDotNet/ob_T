@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:obligation__tracker/pages/AddObligationPage.dart';
 import 'package:obligation__tracker/pages/EditObligationPage.dart';
 import 'package:obligation__tracker/pages/HomePage.dart';
 import 'package:obligation__tracker/pages/SearchPage.dart';
 import 'package:obligation__tracker/pages/StatisticsPage.dart';
 import 'package:obligation__tracker/pages/UserSettingPage.dart';
+import 'package:obligation__tracker/services/api_service.dart';
 
 class ObligationsScreen extends StatefulWidget {
   const ObligationsScreen({super.key});
@@ -16,44 +15,54 @@ class ObligationsScreen extends StatefulWidget {
 }
 
 class _ObligationsScreenState extends State<ObligationsScreen> {
-  final user = FirebaseAuth.instance.currentUser;
-  final CollectionReference obligationsCollection = FirebaseFirestore.instance
-      .collection('obligations');
-  
-  Stream<QuerySnapshot> getObligationsStream() {
-    return obligationsCollection
-        .where('userId', isEqualTo: user?.uid)
-        .orderBy('date')
-        .snapshots();
+  late Future<List<Map<String, dynamic>>> _obligationsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadObligations();
   }
 
-  int getTotalFromDocs(List<QueryDocumentSnapshot> docs) {
-    return docs.fold(0, (sum, doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      return sum + ((data['amount'] ?? 0) as num).toInt();
-    });
+  void _loadObligations() {
+    _obligationsFuture = ApiService.getObligations();
   }
 
-  int getPaidFromDocs(List<QueryDocumentSnapshot> docs) {
-    return docs.fold(0, (sum, doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      return sum + ((data['paid'] ?? 0) as num).toInt();
-    });
+  Future<void> _refresh() async {
+    setState(_loadObligations);
+    await _obligationsFuture;
   }
 
-  int getRemainingFromDocs(List<QueryDocumentSnapshot> docs) {
+  int getTotalFromDocs(List<Map<String, dynamic>> docs) {
+    return docs.fold(0, (sum, data) => sum + ((data['amount'] ?? 0) as num).toInt());
+  }
+
+  int getPaidFromDocs(List<Map<String, dynamic>> docs) {
+    return docs.fold(0, (sum, data) => sum + ((data['paid'] ?? 0) as num).toInt());
+  }
+
+  int getRemainingFromDocs(List<Map<String, dynamic>> docs) {
     return getTotalFromDocs(docs) - getPaidFromDocs(docs);
+  }
+
+  DateTime _parseDate(dynamic value) {
+    if (value == null) return DateTime.now();
+    return DateTime.tryParse(value.toString()) ?? DateTime.now();
+  }
+
+  String _formatDate(dynamic value) {
+    final date = _parseDate(value);
+    return date.toString().split(' ')[0];
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       drawer: _buildDrawer(context),
-      backgroundColor: Color(0xFFAEECE4),
+      backgroundColor: const Color(0xFFAEECE4),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(
+        title: const Text(
           "Obligations Tracker",
           style: TextStyle(
             color: Color(0xFF2F5F63),
@@ -63,19 +72,20 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.search, color: Color(0xFF2F5F63), size: 28),
-            onPressed: () {
-              Navigator.push(
+            icon: const Icon(Icons.search, color: Color(0xFF2F5F63), size: 28),
+            onPressed: () async {
+              await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => SearchPage()),
+                MaterialPageRoute(builder: (context) => const SearchPage()),
               );
+              _refresh();
             },
           ),
         ],
       ),
       extendBodyBehindAppBar: true,
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFFAEECE4), Color(0xFFF8EEDC)],
             begin: Alignment.topLeft,
@@ -84,135 +94,70 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 10),
-                StreamBuilder<QuerySnapshot>(
-                  stream: getObligationsStream(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return _buildSummaryRow(0, 0, 0);
-                    }
-                    final docs = snapshot.data?.docs ?? [];
-                    return _buildSummaryRow(
+            padding: const EdgeInsets.all(16),
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _obligationsFuture,
+              builder: (context, snapshot) {
+                final docs = snapshot.data ?? [];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 10),
+                    _buildSummaryRow(
                       getTotalFromDocs(docs),
                       getPaidFromDocs(docs),
                       getRemainingFromDocs(docs),
-                    );
-                  },
-                ),
-                SizedBox(height: 20),
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    "Obligations List",
-                    style: TextStyle(
-                      color: Color(0xFF2F5F63),
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
                     ),
-                  ),
-                ),
-                SizedBox(height: 10),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: getObligationsStream(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Center(child: CircularProgressIndicator());
-                      }
-                      if (snapshot.hasError) {
-                        return Center(child: Text("Error: ${snapshot.error}"));
-                      }
-                      final docs = snapshot.data?.docs ?? [];
-                      if (docs.isEmpty) {
-                        return Center(
-                          child: Text(
-                            "No obligations added yet.",
-                            style: TextStyle(
-                              color: Color(0xFF2F5F63),
-                              fontSize: 18,
-                            ),
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        itemCount: docs.length,
-                        itemBuilder: (context, idx) {
-                          var obligation =
-                              docs[idx].data() as Map<String, dynamic>;
-                          var docId = docs[idx].id;
-
-                          return _buildObligationCard(
-                            docId,
-                            obligation["title"] ?? "",
-                            obligation["category"] ?? "General",
-                            obligation["priority"] ?? "Normal",
-                            (obligation["amount"] ?? 0).toInt(),
-                            (obligation["paid"] ?? 0).toInt(),
-                            obligation["isPaid"] ?? false,
-                            "",
-                            obligation["date"] != null
-                                ? (obligation["date"] as Timestamp)
-                                      .toDate()
-                                      .toString()
-                                      .split(' ')[0]
-                                : "",
-                            idx,
-                            context,
-                            (bool newStatus) {
-                              obligationsCollection.doc(docId).update({
-                                "isPaid": newStatus,
-                                "paid": newStatus ? obligation["amount"] : 0,
-                              });
-                            },
-                            () {
-                              obligationsCollection.doc(docId).delete();
-                            },
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                SizedBox(height: 10),
-                Center(
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AddObligationPage(),
+                    const SizedBox(height: 20),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        "Obligations List",
+                        style: TextStyle(
+                          color: Color(0xFF2F5F63),
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
                         ),
-                      );
-                      if (result == true) setState(() {});
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF2F5F63),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
                       ),
-                      elevation: 8,
                     ),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 30,
-                        vertical: 15,
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: _buildList(snapshot, docs),
+                    ),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const AddObligationPage(),
+                            ),
+                          );
+                          if (result == true) _refresh();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2F5F63),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          elevation: 8,
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                          child: Text("Add New Obligation"),
+                        ),
                       ),
-                      child: Text("Add New Obligation"),
                     ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -220,13 +165,72 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
     );
   }
 
+  Widget _buildList(
+    AsyncSnapshot<List<Map<String, dynamic>>> snapshot,
+    List<Map<String, dynamic>> docs,
+  ) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (snapshot.hasError) {
+      return Center(child: Text("Error: ${snapshot.error}"));
+    }
+    if (docs.isEmpty) {
+      return const Center(
+        child: Text(
+          "No obligations added yet.",
+          style: TextStyle(color: Color(0xFF2F5F63), fontSize: 18),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView.builder(
+        itemCount: docs.length,
+        itemBuilder: (context, idx) {
+          final obligation = docs[idx];
+          final docId = obligation["_id"].toString();
+          final amount = ((obligation["amount"] ?? 0) as num).toInt();
+          final paid = ((obligation["paid"] ?? 0) as num).toInt();
+          final isPaid = obligation["isPaid"] == true || obligation["status"] == "paid";
+
+          return _buildObligationCard(
+            docId,
+            obligation["title"] ?? "",
+            obligation["category"] ?? "General",
+            obligation["priority"] ?? "Low",
+            amount,
+            paid,
+            isPaid,
+            "",
+            _formatDate(obligation["dueDate"]),
+            idx,
+            context,
+            (bool newStatus) async {
+              await ApiService.updateObligation(docId, {
+                "isPaid": newStatus,
+                "paid": newStatus ? amount : 0,
+              });
+              _refresh();
+            },
+            () async {
+              await ApiService.deleteObligation(docId);
+              _refresh();
+            },
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
       child: Container(
-        color: Color(0xFFE8F6F4),
+        color: const Color(0xFFE8F6F4),
         child: ListView(
           children: [
-            DrawerHeader(
+            const DrawerHeader(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Color(0xFF2F5F63), Color(0xFFAEECE4)],
@@ -247,41 +251,43 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
               ),
             ),
             ListTile(
-              leading: Icon(Icons.bar_chart, color: Color(0xFF2F5F63)),
-              title: Text(
+              leading: const Icon(Icons.bar_chart, color: Color(0xFF2F5F63)),
+              title: const Text(
                 "Statistics",
                 style: TextStyle(fontSize: 16, color: Color(0xFF2F5F63)),
               ),
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => StatisticsPage()),
+                  MaterialPageRoute(builder: (context) => const StatisticsPage()),
                 );
               },
             ),
             ListTile(
-              leading: Icon(Icons.settings, color: Color(0xFF2F5F63)),
-              title: Text(
+              leading: const Icon(Icons.settings, color: Color(0xFF2F5F63)),
+              title: const Text(
                 "Settings",
                 style: TextStyle(fontSize: 16, color: Color(0xFF2F5F63)),
               ),
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => UserSettingsPage()),
+                  MaterialPageRoute(builder: (context) => const UserSettingsPage()),
                 );
               },
             ),
             ListTile(
-              leading: Icon(Icons.logout, color: Colors.redAccent),
-              title: Text(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text(
                 "Log Out",
                 style: TextStyle(fontSize: 16, color: Colors.redAccent),
               ),
-              onTap: () {
+              onTap: () async {
+                await ApiService.clearToken();
+                if (!context.mounted) return;
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => HomePage()),
+                  MaterialPageRoute(builder: (_) => const HomePage()),
                   (route) => false,
                 );
               },
@@ -314,19 +320,19 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: Color(0xFF2F5F63), size: 20),
+          Icon(icon, color: const Color(0xFF2F5F63), size: 20),
           Text(
             title,
-            style: TextStyle(
+            style: const TextStyle(
               color: Color(0xFF2F5F63),
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 5),
+          const SizedBox(height: 5),
           Text(
             value,
-            style: TextStyle(
+            style: const TextStyle(
               color: Color(0xFF2F5F63),
               fontWeight: FontWeight.bold,
               fontSize: 16,
@@ -349,34 +355,33 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
     String date,
     int index,
     BuildContext context,
-    void Function(bool) onStatusChanged,
-    VoidCallback onDelete,
+    Future<void> Function(bool) onStatusChanged,
+    Future<void> Function() onDelete,
   ) {
-    print('obligation id $objId');
     double progress = (amount > 0) ? (paid / amount).clamp(0.0, 1.0) : 0.0;
 
     Color priorityColor = priority.toLowerCase() == 'high'
         ? Colors.redAccent
         : (priority.toLowerCase() == 'medium'
-              ? Colors.orangeAccent
-              : Colors.blueAccent);
+            ? Colors.orangeAccent
+            : Colors.blueAccent);
 
     return Container(
       width: double.infinity,
-      margin: EdgeInsets.symmetric(vertical: 8),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color.fromARGB(255, 148, 199, 194),
+        color: const Color.fromARGB(255, 148, 199, 194),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(
+          const BoxShadow(
             color: Colors.black26,
             offset: Offset(4, 4),
             blurRadius: 10,
           ),
           BoxShadow(
             color: Colors.white.withOpacity(0.1),
-            offset: Offset(-4, -4),
+            offset: const Offset(-4, -4),
             blurRadius: 10,
           ),
         ],
@@ -386,40 +391,42 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
         children: [
           Row(
             children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: Color(0xFF2F5F63),
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF2F5F63),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: priorityColor,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   priority,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-              Spacer(),
+              const SizedBox(width: 8),
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.white24,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   category,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Color(0xFF2F5F63),
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -428,18 +435,18 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
               ),
             ],
           ),
-          SizedBox(height: 12),
-          Text("Amount: \$$amount", style: TextStyle(color: Colors.white)),
-          Text("Paid: \$$paid", style: TextStyle(color: Colors.white)),
+          const SizedBox(height: 12),
+          Text("Amount: \$$amount", style: const TextStyle(color: Colors.white)),
+          Text("Paid: \$$paid", style: const TextStyle(color: Colors.white)),
           Text(
             "Date: $date",
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white,
               fontStyle: FontStyle.italic,
               fontSize: 12,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
@@ -447,11 +454,11 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
               minHeight: 8,
               backgroundColor: Colors.white24,
               valueColor: AlwaysStoppedAnimation(
-                isPaid ? Color(0xFF4DB482) : Colors.white,
+                isPaid ? const Color(0xFF4DB482) : Colors.white,
               ),
             ),
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -461,8 +468,8 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
                   showDialog(
                     context: context,
                     builder: (context) => AlertDialog(
-                      backgroundColor: Color.fromARGB(255, 194, 243, 237),
-                      title: Text(
+                      backgroundColor: const Color.fromARGB(255, 194, 243, 237),
+                      title: const Text(
                         'Payment Status',
                         style: TextStyle(color: Color(0xFF2F5F63)),
                       ),
@@ -470,34 +477,34 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
                         isPaid
                             ? "This obligation is paid."
                             : "This obligation is not paid.",
-                        style: TextStyle(color: Color(0xFF2F5F63)),
+                        style: const TextStyle(color: Color(0xFF2F5F63)),
                       ),
                       actions: [
                         if (isPaid)
                           TextButton(
-                            onPressed: () {
-                              onStatusChanged(false);
-                              Navigator.pop(context);
+                            onPressed: () async {
+                              await onStatusChanged(false);
+                              if (context.mounted) Navigator.pop(context);
                             },
-                            child: Text(
+                            child: const Text(
                               'Mark as Not Paid',
                               style: TextStyle(color: Color(0xFFC24B4B)),
                             ),
                           ),
                         if (!isPaid)
                           TextButton(
-                            onPressed: () {
-                              onStatusChanged(true);
-                              Navigator.pop(context);
+                            onPressed: () async {
+                              await onStatusChanged(true);
+                              if (context.mounted) Navigator.pop(context);
                             },
-                            child: Text(
+                            child: const Text(
                               'Mark as Paid',
                               style: TextStyle(color: Color(0xFF4DB482)),
                             ),
                           ),
                         TextButton(
                           onPressed: () => Navigator.pop(context),
-                          child: Text(
+                          child: const Text(
                             'Cancel',
                             style: TextStyle(color: Color(0xFF2F5F63)),
                           ),
@@ -507,23 +514,23 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
                   );
                 },
                 child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
                   decoration: BoxDecoration(
-                    color: isPaid ? Color(0xFF4DB482) : Color(0xFFC24B4B),
+                    color: isPaid ? const Color(0xFF4DB482) : const Color(0xFFC24B4B),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     isPaid ? "Paid" : "Not Paid",
-                    style: TextStyle(color: Colors.white),
+                    style: const TextStyle(color: Colors.white),
                   ),
                 ),
               ),
               Row(
                 children: [
                   IconButton(
-                    icon: Icon(Icons.edit, size: 20, color: Colors.blueAccent),
-                    onPressed: () {
-                      Navigator.push(
+                    icon: const Icon(Icons.edit, size: 20, color: Colors.blueAccent),
+                    onPressed: () async {
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => Editpage(
@@ -535,44 +542,43 @@ class _ObligationsScreenState extends State<ObligationsScreen> {
                             paid: paid,
                             isPaid: isPaid,
                             type: type,
-                            date: Timestamp.fromDate(DateTime.parse(date)),
+                            date: DateTime.parse(date),
                             index: index,
                           ),
                         ),
                       );
+                      if (result == true) _refresh();
                     },
                   ),
                   IconButton(
-                    icon: Icon(Icons.delete, size: 20, color: Colors.redAccent),
+                    icon: const Icon(Icons.delete, size: 20, color: Colors.redAccent),
                     onPressed: () {
                       showDialog(
                         context: context,
                         builder: (context) => AlertDialog(
-                          backgroundColor: Color.fromARGB(255, 194, 243, 237),
-                          title: Text(
+                          backgroundColor: const Color.fromARGB(255, 194, 243, 237),
+                          title: const Text(
                             'Delete Confirmation',
                             style: TextStyle(color: Color(0xFF2F5F63)),
                           ),
-                          content: Text(
+                          content: const Text(
                             'Are you sure you want to delete this obligation?',
                             style: TextStyle(color: Color(0xFF2F5F63)),
                           ),
                           actions: [
                             TextButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                              },
-                              child: Text(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text(
                                 'Cancel',
                                 style: TextStyle(color: Color(0xFF2F5F63)),
                               ),
                             ),
                             TextButton(
-                              onPressed: () {
-                                onDelete();
-                                Navigator.pop(context);
+                              onPressed: () async {
+                                await onDelete();
+                                if (context.mounted) Navigator.pop(context);
                               },
-                              child: Text(
+                              child: const Text(
                                 'Delete',
                                 style: TextStyle(color: Color(0xFFC24B4B)),
                               ),

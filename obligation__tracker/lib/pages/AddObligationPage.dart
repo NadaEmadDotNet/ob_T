@@ -1,6 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:obligation__tracker/services/api_service.dart';
 
 class AddObligationPage extends StatefulWidget {
   const AddObligationPage({super.key});
@@ -170,14 +169,6 @@ class _AddObligationPageState extends State<AddObligationPage> {
                           onPressed: () async {
                             if (!_formKey.currentState!.validate()) return;
 
-                            final user = FirebaseAuth.instance.currentUser;
-                            if (user == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("User not logged in")),
-                              );
-                              return;
-                            }
-
                             final double? amount =
                                 double.tryParse(amountController.text.trim());
                             if (amount == null) {
@@ -188,14 +179,13 @@ class _AddObligationPageState extends State<AddObligationPage> {
                             }
 
                             try {
-                              await FirebaseFirestore.instance.collection("obligations").add({
+                              await ApiService.createObligation({
                               "title": titleController.text.trim(),
                               "amount": amount,
                               "category": selectedCategory,
-                              "date": Timestamp.fromDate(selectedDate!),
+                              "dueDate": selectedDate!.toIso8601String(),
                               "priority": priority,
                               "isPaid": false,
-                            "userId": user.uid,
                               "paid": 0,
                               "remaining": amount,
                               });

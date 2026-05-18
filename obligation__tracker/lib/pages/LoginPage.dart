@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:obligation__tracker/pages/Obligation_Screen.dart';
 import 'package:obligation__tracker/pages/RegisterPage.dart';
+import 'package:obligation__tracker/services/api_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -19,21 +18,11 @@ class _LoginPageState extends State<LoginPage> {
 
   
   Future<void> _resetPassword(String email) async {
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim());
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password reset link sent! Check your email.'),
-          backgroundColor: Color(0xFF0A6A60),
-        ),
-      );
-    } on FirebaseAuthException catch (e) {
-      String message = "Error occurred";
-      if (e.code == 'user-not-found') message = "No user found with this email";
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Password reset is not available in the local API yet.'),
+      ),
+    );
   }
 
   
@@ -191,47 +180,10 @@ class _LoginPageState extends State<LoginPage> {
                             onPressed: () async {
                               if (_formKey.currentState!.validate()) {
                                 try {
-                                  UserCredential userCredential = await FirebaseAuth.instance
-                                      .signInWithEmailAndPassword(
+                                  await ApiService.login(
                                     email: _emailController.text.trim(),
                                     password: _passwordController.text.trim(),
                                   );
-
-                                  final user = userCredential.user!;
-
-                                  
-                                  if (!user.emailVerified) {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        title: const Text('Email not verified'),
-                                        content: const Text(
-                                          'Please verify your email before logging in.\n'
-                                          'Check your inbox and click the verification link.'
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(context),
-                                            child: const Text('OK'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    return;
-                                  }
-
-                                  
-                                  final userDoc = await FirebaseFirestore.instance
-                                      .collection('users')
-                                      .doc(user.uid)
-                                      .get();
-
-                                  if (!userDoc.exists) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text("User data not found")),
-                                    );
-                                    return;
-                                  }
 
                                   if (!mounted) return;
 
@@ -241,13 +193,9 @@ class _LoginPageState extends State<LoginPage> {
                                       builder: (context) => const ObligationsScreen(),
                                     ),
                                   );
-                                } on FirebaseAuthException catch (e) {
-                                  String message = "Login failed";
-                                  if (e.code == 'user-not-found') message = "No user found for this email";
-                                  else if (e.code == 'wrong-password') message = "Wrong password";
-
+                                } catch (e) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(message)),
+                                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
                                   );
                                 }
                               }

@@ -5,6 +5,7 @@ const protect = require("../middleware/authMiddleware");
 
 
 const {
+createObligationValidator,
 createObligation,
 getAllObligations,
 getSingleObligation,
@@ -17,7 +18,7 @@ const router = express.Router();
 router.use(protect);
 router.route('/')
 .get(getAllObligations)
-.post(createObligation)
+.post(createObligationValidator, createObligation)
 
 
 router.route('/:id')

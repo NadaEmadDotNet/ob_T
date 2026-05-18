@@ -15,6 +15,10 @@ const userSchema = new mongoose.Schema({
     password: { 
         type: String, 
         required: true 
+    },
+    profileImageUrl: {
+        type: String,
+        default: ""
     }
 }, {
     timestamps: true // مفيدة جداً لمعرفة وقت تسجيل اليوزر

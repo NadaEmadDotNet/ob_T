@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // Connection URL
-const url = 'mongodb://127.0.0.1:27017/obligation_tracker';
+const url = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/obligation_tracker';
 
 const connectDb = () => {
     mongoose.connect(url).then(() => {

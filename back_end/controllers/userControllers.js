@@ -1,12 +1,14 @@
-const User = require('../models/usermodel');
+const User = require('../models/userModel');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
 
 // Signup
 exports.signup = async (req, res) => {
     try {
 
-        const { email, password, username } = req.body;
+        const { email, password, username, profileImageUrl } = req.body;
 
         const existingUser = await User.findOne({ email });
 
@@ -21,7 +23,8 @@ exports.signup = async (req, res) => {
         const newUser = new User({
             email,
             password: hashedPassword,
-            username
+            username,
+            profileImageUrl: profileImageUrl || ""
         });
 
         await newUser.save();
@@ -37,7 +40,13 @@ exports.signup = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            token
+            token,
+            user: {
+                id: newUser._id,
+                username: newUser.username,
+                email: newUser.email,
+                profileImageUrl: newUser.profileImageUrl
+            }
         });
 
     } catch (err) {
@@ -86,11 +95,130 @@ exports.login = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            token
+            token,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                profileImageUrl: user.profileImageUrl || ""
+            }
         });
 
     } catch (err) {
 
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+};
+
+// Get all users
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find().select("-password");
+
+        res.status(200).json({
+            success: true,
+            data: users
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+};
+
+exports.getProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select("-password");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: user
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+};
+
+exports.updateProfile = async (req, res) => {
+    try {
+        const { username, profileImageUrl } = req.body;
+        const updateData = {};
+
+        if (username !== undefined) updateData.username = username;
+        if (profileImageUrl !== undefined) updateData.profileImageUrl = profileImageUrl;
+
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            updateData,
+            { new: true, runValidators: true }
+        ).select("-password");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: user
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+};
+
+exports.uploadProfileAvatar = async (req, res) => {
+    try {
+        const { imageBase64, fileName } = req.body;
+
+        if (!imageBase64) {
+            return res.status(400).json({ message: "Image is required" });
+        }
+
+        const uploadsDir = path.join(__dirname, "..", "uploads", "avatars");
+        fs.mkdirSync(uploadsDir, { recursive: true });
+
+        const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const extension = path.extname(fileName || "").toLowerCase() || ".png";
+        const safeExtension = [".jpg", ".jpeg", ".png", ".webp"].includes(extension)
+            ? extension
+            : ".png";
+        const avatarFileName = `avatar_${req.user.id}_${Date.now()}${safeExtension}`;
+        const avatarPath = path.join(uploadsDir, avatarFileName);
+
+        fs.writeFileSync(avatarPath, buffer);
+
+        const profileImageUrl = `${req.protocol}://${req.get("host")}/uploads/avatars/${avatarFileName}`;
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { profileImageUrl },
+            { new: true, runValidators: true }
+        ).select("-password");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            profileImageUrl,
+            data: user
+        });
+    } catch (err) {
         res.status(500).json({
             success: false,
             error: err.message

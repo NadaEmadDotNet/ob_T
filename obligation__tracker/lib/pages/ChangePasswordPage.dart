@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:obligation__tracker/services/api_service.dart';
 
 class ChangePasswordPage extends StatefulWidget {
   const ChangePasswordPage({super.key});
 
   @override
-  _ChangePasswordPageState createState() => _ChangePasswordPageState();
+  State<ChangePasswordPage> createState() => _ChangePasswordPageState();
 }
 
 class _ChangePasswordPageState extends State<ChangePasswordPage> {
@@ -22,7 +22,6 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
 
-  
   String? _validatePasswordStrength(String? value) {
     if (value == null || value.isEmpty) {
       return 'Password is required';
@@ -38,54 +37,37 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   }
 
   Future<void> _handleChangePassword() async {
-    if (_formKey.currentState!.validate()) {
-      try {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const Center(child: CircularProgressIndicator()),
-        );
+    if (!_formKey.currentState!.validate()) return;
 
-        User? user = FirebaseAuth.instance.currentUser;
-        
-        if (user != null) {
-          AuthCredential credential = EmailAuthProvider.credential(
-            email: user.email!,
-            password: _oldPasswordController.text,
-          );
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
 
-          await user.reauthenticateWithCredential(credential);
-          await user.updatePassword(_newPasswordController.text);
+      await ApiService.changePassword(
+        oldPassword: _oldPasswordController.text,
+        newPassword: _newPasswordController.text,
+      );
 
-          Navigator.pop(context); 
+      if (!mounted) return;
+      Navigator.pop(context);
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Password changed successfully!'),
-              backgroundColor: primaryTextColor,
-            ),
-          );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Password changed successfully!'),
+          backgroundColor: primaryTextColor,
+        ),
+      );
 
-          Navigator.pop(context); 
-        }
-      } on FirebaseAuthException catch (e) {
-        Navigator.pop(context);
-        String errorMsg = "An error occurred";
-        if (e.code == 'wrong-password') {
-          errorMsg = "كلمة المرور الحالية غير صحيحة";
-        } else if (e.code == 'weak-password') {
-          errorMsg = "كلمة المرور الجديدة ضعيفة جداً";
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg), backgroundColor: Colors.redAccent),
-        );
-      } catch (e) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Error! Try again")),
-        );
-      }
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
     }
   }
 
@@ -179,7 +161,6 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                   ),
                   child: Column(
                     children: [
-                      
                       _buildPasswordField(
                         controller: _oldPasswordController,
                         labelText: 'Current Password',
@@ -187,7 +168,6 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                         toggleObscure: () => setState(() => _isObscureOld = !_isObscureOld),
                         validator: (value) => (value == null || value.isEmpty) ? 'Please enter current password' : null,
                       ),
-                      
                       _buildPasswordField(
                         controller: _newPasswordController,
                         labelText: 'New Password',
@@ -195,18 +175,14 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                         toggleObscure: () => setState(() => _isObscureNew = !_isObscureNew),
                         validator: _validatePasswordStrength,
                       ),
-                      
                       _buildPasswordField(
                         controller: _confirmPasswordController,
                         labelText: 'Confirm New Password',
                         isObscure: _isObscureConfirm,
                         toggleObscure: () => setState(() => _isObscureConfirm = !_isObscureConfirm),
                         validator: (value) {
-                          
                           final strengthError = _validatePasswordStrength(value);
                           if (strengthError != null) return strengthError;
-                          
-                          
                           if (value != _newPasswordController.text) {
                             return 'Passwords do not match!';
                           }

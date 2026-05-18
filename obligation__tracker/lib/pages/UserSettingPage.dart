@@ -5,15 +5,13 @@ import 'package:obligation__tracker/pages/ChangePasswordPage.dart';
 import 'package:obligation__tracker/pages/FeedbackPage.dart';
 import 'package:obligation__tracker/pages/HelpSupportPage.dart';
 import 'package:obligation__tracker/pages/HomePage.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; 
-import 'package:firebase_auth/firebase_auth.dart' as fb_auth; 
-import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:obligation__tracker/services/api_service.dart';
 
 class UserSettingsPage extends StatefulWidget {
   const UserSettingsPage({super.key});
 
   @override
-  _UserSettingsPageState createState() => _UserSettingsPageState();
+  State<UserSettingsPage> createState() => _UserSettingsPageState();
 }
 
 class _UserSettingsPageState extends State<UserSettingsPage> {
@@ -21,13 +19,15 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   final Color gradientBottom = const Color(0xFFF9F7E8); 
   final Color primaryTextColor = const Color(0xFF4B4532); 
 
-  final fb_auth.FirebaseAuth _auth = fb_auth.FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final SupabaseClient _supabase = Supabase.instance.client;
-
   String _userName = ''; 
   String? _imageUrl;
   bool _isUploading = false;
+
+  String _normalizeAvatarUrl(String url) {
+    if (url.isEmpty) return url;
+    if (url.contains('supabase.co')) return '';
+    return url;
+  }
 
   @override
   void initState() {
@@ -36,17 +36,14 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   }
 
   Future<void> _loadUserData() async {
-    final fb_auth.User? currentUser = _auth.currentUser;
-    if (currentUser == null) return;
     try {
-      DocumentSnapshot doc = await _firestore.collection('users').doc(currentUser.uid).get();
-      if (doc.exists) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        setState(() {
-          _userName = data['username'] ?? 'No Name';
-          _imageUrl = (data['_imageUrl'] != null && data['_imageUrl'] != "") ? data['_imageUrl'] : null;
-        });
-      }
+      final data = await ApiService.getProfile();
+      if (!mounted) return;
+      setState(() {
+        _userName = data['username'] ?? 'No Name';
+        final imageUrl = data['profileImageUrl']?.toString() ?? '';
+        _imageUrl = imageUrl.isNotEmpty ? _normalizeAvatarUrl(imageUrl) : null;
+      });
     } catch (e) { debugPrint("Error loading data: $e"); }
   }
 
@@ -64,38 +61,22 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
     setState(() => _isUploading = true);
 
     try {
-      final String userId = _auth.currentUser?.uid ?? "unknown_user";
       final bytes = await image.readAsBytes();
-      final String uniqueName = 'avatar_${userId}_${DateTime.now().millisecondsSinceEpoch}.png'; 
-      
-      await _supabase.storage.from('avatars').uploadBinary(
-        uniqueName, 
-        bytes, 
-        fileOptions: const FileOptions(upsert: true, contentType: 'image/png')
+      final publicUrl = await ApiService.uploadProfileAvatar(
+        bytes: bytes,
+        fileName: image.name,
       );
-      
-      final String publicUrl = _supabase.storage.from('avatars').getPublicUrl(uniqueName);
 
-      await _firestore.collection('users').doc(userId).update({
-        '_imageUrl': publicUrl
+      if (!mounted) return;
+      setState(() { 
+        _imageUrl = publicUrl; 
+        _isUploading = false; 
       });
-      
-      try {
-        await _supabase.from('profiles').upsert({'id': userId, 'avatar_url': publicUrl});
-      } catch (sbError) {
-        debugPrint("Supabase table update skipped: $sbError");
-      }
-
-      if (mounted) {
-        setState(() { 
-          _imageUrl = publicUrl; 
-          _isUploading = false; 
-        });
-      }
 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile image updated!')));
     } catch (e) { 
-      if (mounted) setState(() => _isUploading = false);
+      if (!mounted) return;
+      setState(() => _isUploading = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
@@ -192,10 +173,11 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                             TextButton(
                               onPressed: () async {
                                 if (newName.isNotEmpty) {
-                                  await _firestore.collection('users').doc(_auth.currentUser!.uid).update({'username': newName});
+                                  await ApiService.updateProfile(username: newName);
+                                  if (!context.mounted) return;
                                   setState(() => _userName = newName);
                                 }
-                                Navigator.pop(context);
+                                if (context.mounted) Navigator.pop(context);
                               }, 
                               child: Text('Save', style: TextStyle(color: primaryTextColor)),
                             ),
@@ -260,8 +242,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
 
               TextButton.icon(
                 onPressed: () async {
-                  await _auth.signOut(); 
-                  await _supabase.auth.signOut();
+                  await ApiService.clearToken();
                   if (!mounted) return;
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const HomePage()), (r) => false);
                 },

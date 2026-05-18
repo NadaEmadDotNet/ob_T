@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:obligation__tracker/pages/LoginPage.dart';
+import 'package:obligation__tracker/services/api_service.dart';
 
 
 class RegisterPage extends StatefulWidget {
@@ -174,45 +173,11 @@ class _RegisterPageState extends State<RegisterPage> {
                               if (!_formKey.currentState!.validate()) return;
 
                               try {
-                            
-                            
-UserCredential userCredential = await FirebaseAuth.instance
-    .createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim());
-
-
-await userCredential.user!.sendEmailVerification();
-
-
-await FirebaseFirestore.instance
-    .collection('users')
-    .doc(userCredential.user!.uid)
-    .set({
-  'userId': userCredential.user!.uid, 
-  'username': _usernameController.text.trim(),
-  'email': _emailController.text.trim(),
-});
-
-
-showDialog(
-  context: context,
-  builder: (context) => AlertDialog(
-    title: const Text('Verify Your Email'),
-    content: const Text(
-      'A verification link has been sent to your email.\n'
-      'Please open your email and click the link before logging in.'
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('OK'),
-      ),
-    ],
-  ),
-);
-
-
+                                await ApiService.signup(
+                                  username: _usernameController.text.trim(),
+                                  email: _emailController.text.trim(),
+                                  password: _passwordController.text.trim(),
+                                );
 
                                 if (!mounted) return;
 
@@ -236,10 +201,8 @@ showDialog(
                                     MaterialPageRoute(builder: (context) => const LoginPage()),
                                   );
                                 });
-                              } on FirebaseAuthException catch (e) {
-                                String message = 'Registration failed';
-                                if (e.code == 'email-already-in-use') message = 'Email already used';
-                                else if (e.code == 'weak-password') message = 'Password too weak';
+                              } catch (e) {
+                                final message = e.toString().replaceFirst('Exception: ', '');
                                 ScaffoldMessenger.of(context)
                                     .showSnackBar(SnackBar(content: Text(message)));
                               }

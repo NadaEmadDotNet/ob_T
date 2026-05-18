@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:obligation__tracker/services/api_service.dart';
 
 class StatisticsPage extends StatefulWidget {
   const StatisticsPage({super.key});
@@ -11,29 +10,21 @@ class StatisticsPage extends StatefulWidget {
 }
 
 class _StatisticsPageState extends State<StatisticsPage> {
+  DateTime _parseDate(dynamic value) {
+    return DateTime.tryParse(value?.toString() ?? '') ?? DateTime.now();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text("Please login first")),
-      );
-    }
-
-    final uid = user.uid;
-    final obligationsRef = FirebaseFirestore.instance
-        .collection('obligations')
-        .where('userId', isEqualTo: uid);
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: const Color(0xFF9CE6D7),
         elevation: 0,
         centerTitle: true,
-        title: Row(
+        title: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
+          children: [
             Icon(Icons.bar_chart, color: Colors.blue, size: 30),
             SizedBox(width: 8),
             Text(
@@ -47,33 +38,32 @@ class _StatisticsPageState extends State<StatisticsPage> {
           ],
         ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: obligationsRef.snapshots(),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: ApiService.getObligations(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("No obligations added yet"));
+          if (snapshot.hasError) {
+            return Center(child: Text("Error: ${snapshot.error}"));
           }
 
-          final docs = snapshot.data!.docs;
+          final docs = snapshot.data ?? [];
+          if (docs.isEmpty) {
+            return const Center(child: Text("No obligations added yet"));
+          }
 
           int completed = 0;
           int pending = 0;
           int overdue = 0;
           int obligationsThisMonth = 0;
-
           final Map<String, double> pieData = {};
           final now = DateTime.now();
 
-          for (var doc in docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            final double amount = (data['amount'] ?? 0).toDouble();
-            final bool isPaid = data['isPaid'] ?? false;
-            final Timestamp dateTs = data['date'] ?? Timestamp.now();
-            final date = dateTs.toDate();
+          for (final data in docs) {
+            final amount = (data['amount'] ?? 0).toDouble();
+            final isPaid = data['isPaid'] == true || data['status'] == 'paid';
+            final date = _parseDate(data['dueDate']);
 
             if (date.month == now.month && date.year == now.year) {
               obligationsThisMonth++;
@@ -91,11 +81,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             pieData[category] = (pieData[category] ?? 0) + amount;
           }
 
-          docs.sort((a, b) {
-            final dateA = (a['date'] as Timestamp).toDate();
-            final dateB = (b['date'] as Timestamp).toDate();
-            return dateB.compareTo(dateA);
-          });
+          docs.sort((a, b) => _parseDate(b['dueDate']).compareTo(_parseDate(a['dueDate'])));
 
           return Container(
             decoration: const BoxDecoration(
@@ -116,53 +102,24 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 10),
-
-                    /// TOP CARDS
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        HoverCard(
-                          title: "Completed",
-                          number: completed.toString(),
-                          color: const Color(0xFFBBDEFB),
-                          icon: Icons.check_circle,
-                        ),
-                        HoverCard(
-                          title: "Pending",
-                          number: pending.toString(),
-                          color: const Color(0xFFE1BEE7),
-                          icon: Icons.access_time,
-                        ),
+                        HoverCard(title: "Completed", number: completed.toString(), color: const Color(0xFFBBDEFB), icon: Icons.check_circle),
+                        HoverCard(title: "Pending", number: pending.toString(), color: const Color(0xFFE1BEE7), icon: Icons.access_time),
                       ],
                     ),
                     const SizedBox(height: 15),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        HoverCard(
-                          title: "Overdue",
-                          number: overdue.toString(),
-                          color: const Color(0xFFFFCDD2),
-                          icon: Icons.warning,
-                        ),
-                        HoverCard(
-                          title: "Total this month",
-                          number: obligationsThisMonth.toString(),
-                          color: const Color(0xFFC8E6C9),
-                          icon: Icons.calendar_today,
-                        ),
+                        HoverCard(title: "Overdue", number: overdue.toString(), color: const Color(0xFFFFCDD2), icon: Icons.warning),
+                        HoverCard(title: "Total this month", number: obligationsThisMonth.toString(), color: const Color(0xFFC8E6C9), icon: Icons.calendar_today),
                       ],
                     ),
-
                     const SizedBox(height: 30),
-                    const Text(
-                      "Obligations by Category",
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
+                    const Text("Obligations by Category", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 20),
-
-                    /// PIE CHART (Fixed / Static)
                     Center(
                       child: SizedBox(
                         width: 260,
@@ -171,14 +128,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
                           PieChartData(
                             sectionsSpace: 2,
                             centerSpaceRadius: 40,
-                            sections: pieData.entries
-                                .toList()
-                                .asMap()
-                                .entries
-                                .map((entry) {
+                            sections: pieData.entries.toList().asMap().entries.map((entry) {
                               final index = entry.key;
                               final data = entry.value;
-
                               final colors = [
                                 Colors.blue,
                                 Colors.red,
@@ -192,7 +144,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                               return PieChartSectionData(
                                 color: colors[index % colors.length],
                                 value: data.value,
-                                radius: 90, // ثابت
+                                radius: 90,
                                 showTitle: true,
                                 title: data.key,
                                 titleStyle: const TextStyle(
@@ -206,27 +158,19 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 30),
-                    const Text(
-                      "Recent Obligations",
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
+                    const Text("Recent Obligations", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 15),
-
                     Column(
-                      children: docs.take(5).map((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
+                      children: docs.take(5).map((data) {
                         final title = data['title'] ?? 'New obligation';
-                        final date = (data['date'] as Timestamp).toDate();
+                        final date = _parseDate(data['dueDate']);
 
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 5),
                           child: Row(
                             children: [
-                              const Icon(Icons.circle,
-                                  color: Colors.blue, size: 12),
+                              const Icon(Icons.circle, color: Colors.blue, size: 12),
                               const SizedBox(width: 8),
                               Expanded(child: Text(title)),
                               Text("${date.day}/${date.month}/${date.year}"),
@@ -246,7 +190,6 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 }
 
-/// HOVER CARD
 class HoverCard extends StatefulWidget {
   final String title;
   final String number;

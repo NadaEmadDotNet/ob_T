@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:obligation__tracker/services/api_service.dart';
 
 class FeedbackPage extends StatefulWidget {
   const FeedbackPage({super.key});
@@ -26,13 +25,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
     }
 
     try {
-      final User? user = FirebaseAuth.instance.currentUser;
-      await FirebaseFirestore.instance.collection('feedbacks').add({
-        'userId': user?.uid ?? 'guest_user',
-        'userEmail': user?.email ?? 'no email',
-        'feedback': feedbackText,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      await ApiService.createFeedback(feedbackText);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

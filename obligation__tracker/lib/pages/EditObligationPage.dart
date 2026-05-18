@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:obligation__tracker/pages/Obligation_Screen.dart';
+import 'package:obligation__tracker/services/api_service.dart';
 
 class Editpage extends StatefulWidget {
   final String docId;
@@ -11,7 +10,7 @@ class Editpage extends StatefulWidget {
   final int paid;
   final bool isPaid;
   final String type;
-  final Timestamp date; 
+  final DateTime date; 
   final int index;
 
   const Editpage({
@@ -47,7 +46,7 @@ class _EditpageState extends State<Editpage> {
     _amountController = TextEditingController(text: widget.amount.toString());
     _paidamountController = TextEditingController(text: widget.paid.toString());
     _duedateController =
-        TextEditingController(text: widget.date.toDate().toString().split(' ')[0]);
+        TextEditingController(text: widget.date.toString().split(' ')[0]);
   }
 
   String calculatePriority(DateTime dueDate) {
@@ -64,12 +63,8 @@ class _EditpageState extends State<Editpage> {
       bool calculatedIsPaid = paid == amount;
       DateTime dueDate = DateTime.parse(_duedateController.text);
       String calculatedPriority = calculatePriority(dueDate);
-      Timestamp timestamp = Timestamp.fromDate(dueDate);
 
-      await FirebaseFirestore.instance
-          .collection('obligations')
-          .doc(widget.docId)
-          .update({
+      await ApiService.updateObligation(widget.docId, {
         'title': _nameController.text,
         'category': widget.category,
         'priority': calculatedPriority,
@@ -77,7 +72,7 @@ class _EditpageState extends State<Editpage> {
         'paid': paid,
         'isPaid': calculatedIsPaid,
         'type': widget.type,
-        'date': timestamp,
+        'dueDate': dueDate.toIso8601String(),
         'index': widget.index,
       });
 
@@ -85,10 +80,7 @@ class _EditpageState extends State<Editpage> {
         const SnackBar(content: Text("Saved Successfully!")),
       );
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => ObligationsScreen()),
-      );
+      Navigator.pop(context, true);
     }
   }
 

@@ -21,11 +21,28 @@ const obligationSchema = new mongoose.Schema(
             required: true,
         },
 
+        priority: {
+            type: String,
+            enum: ["High", "Medium", "Low"],
+            default: "Low",
+        },
+
+        paid: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
+        isPaid: {
+            type: Boolean,
+            default: false,
+        },
+
         status: {
             type: String,
             enum: ["paid", "unpaid"],
             default: "unpaid",
-        },
+        }, 
 
         category: {
             type: String,
@@ -37,7 +54,11 @@ const obligationSchema = new mongoose.Schema(
                 "Personal",
                 "Utilities",
                 "Work",
-                "Others"
+                "Others",
+                "University",
+                "Shopping",
+                "Installments",
+                "Other"
             ],
             required: true,
         },
