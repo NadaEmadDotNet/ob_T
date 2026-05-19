@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:obligation__tracker/services/api_service.dart';
+import 'package:obligation__tracker/theme/app_design.dart';
 
 class Editpage extends StatefulWidget {
   final String docId;
   final String title;
   final String category;
-  final String priority;
+  final String? priority;
   final int amount;
   final int paid;
-  final bool isPaid;
   final String type;
-  final DateTime date; 
+  final DateTime date;
   final int index;
 
   const Editpage({
@@ -21,7 +21,6 @@ class Editpage extends StatefulWidget {
     required this.priority,
     required this.amount,
     required this.paid,
-    required this.isPaid,
     required this.type,
     required this.date,
     required this.index,
@@ -33,192 +32,225 @@ class Editpage extends StatefulWidget {
 
 class _EditpageState extends State<Editpage> {
   final _formKey = GlobalKey<FormState>();
-
-  late TextEditingController _nameController;
-  late TextEditingController _amountController;
-  late TextEditingController _paidamountController;
-  late TextEditingController _duedateController;
+  late final TextEditingController _titleController;
+  late final TextEditingController _amountController;
+  late final TextEditingController _paidController;
+  late final TextEditingController _dateController;
+  late DateTime _dueDate;
+  late String _category;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.title);
+    _dueDate = widget.date;
+    _category = AppData.categories.contains(widget.category) ? widget.category : 'Others';
+    _titleController = TextEditingController(text: widget.title);
     _amountController = TextEditingController(text: widget.amount.toString());
-    _paidamountController = TextEditingController(text: widget.paid.toString());
-    _duedateController =
-        TextEditingController(text: widget.date.toString().split(' ')[0]);
+    _paidController = TextEditingController(text: widget.paid.toString());
+    _dateController = TextEditingController(text: _formatDate(_dueDate));
   }
 
-  String calculatePriority(DateTime dueDate) {
-    int diffDays = dueDate.difference(DateTime.now()).inDays;
-    if (diffDays <= 3) return "High";
-    if (diffDays <= 10) return "Medium";
-    return "Low";
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _amountController.dispose();
+    _paidController.dispose();
+    _dateController.dispose();
+    super.dispose();
   }
 
-  Future<void> saveData() async {
-    if (_formKey.currentState!.validate()) {
-      int amount = int.parse(_amountController.text);
-      int paid = int.parse(_paidamountController.text);
-      bool calculatedIsPaid = paid == amount;
-      DateTime dueDate = DateTime.parse(_duedateController.text);
-      String calculatedPriority = calculatePriority(dueDate);
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
 
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    setState(() {
+      _dueDate = picked;
+      _dateController.text = _formatDate(picked);
+    });
+  }
+
+  Future<void> _saveData() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final amount = double.parse(_amountController.text.trim());
+    final paid = double.parse(_paidController.text.trim());
+
+    setState(() => _saving = true);
+    try {
       await ApiService.updateObligation(widget.docId, {
-        'title': _nameController.text,
-        'category': widget.category,
-        'priority': calculatedPriority,
+        'title': _titleController.text.trim(),
+        'category': _category,
         'amount': amount,
         'paid': paid,
-        'isPaid': calculatedIsPaid,
-        'type': widget.type,
-        'dueDate': dueDate.toIso8601String(),
-        'index': widget.index,
+        'dueDate': _dueDate.toIso8601String(),
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Saved Successfully!")),
+        SnackBar(
+          content: const Text('Saved successfully'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
       );
-
       Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFAEECE4), // لون Mint زي AddObligationPage
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF0A6A60)), // لون أيقونات متناسق
-        title: const Text(
-          "Edit Obligation",
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0A6A60), 
-          ),
-        ),
-
+        title: const Text('Edit obligation', style: TextStyle(fontWeight: FontWeight.w900)),
       ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFAEECE4),
-              Color(0xFFF8EEDC),
-            ],
-          ),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextFormField(
-                          controller: _nameController,
-                          decoration: const InputDecoration(
-                            labelText: "Name",
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) =>
-                              value!.trim().isEmpty ? "Name is required" : null,
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _amountController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: "Amount",
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) {
-                            if (value!.trim().isEmpty) return "Amount is required";
-                            if (double.tryParse(value) == null) return "Enter a valid number";
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _paidamountController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: "Paid Amount",
-                            labelStyle: TextStyle(color: Colors.black),
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) {
-                            if (value!.trim().isEmpty) return "Paid amount is required";
-                            double paid = double.tryParse(value) ?? 0;
-                            double amount = double.tryParse(_amountController.text) ?? 0;
-                            if (paid > amount) return "Paid amount cannot exceed total amount";
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _duedateController,
-                          readOnly: true,
-                          decoration: InputDecoration(
-                            labelText: "Due Date",
-                            labelStyle: const TextStyle(color: Colors.black),
-                            border: const OutlineInputBorder(),
-                            suffixIcon: IconButton(
-                              icon: const Icon(
-                                Icons.calendar_today,
-                                color: Colors.black,
-                              ),
-                              onPressed: () async {
-                                DateTime? pickedtime = await showDatePicker(
-                                  context: context,
-                                  initialDate: DateTime.tryParse(_duedateController.text) ?? DateTime.now(),
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2100),
-                                );
-                                if (pickedtime != null) {
-                                  setState(() {
-                                    _duedateController.text = pickedtime.toString().split(" ")[0];
-                                  });
-                                }
-                              },
-                            ),
-                          ),
-                          validator: (value) =>
-                              value!.trim().isEmpty ? "Due date is required" : null,
-                        ),
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: saveData,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF4CC7B8),
-                              foregroundColor: Colors.white,
-                            ),
-                            child: const Text("Save"),
-                          ),
-                        ),
-                      ],
+      body: AppBackground(
+        padding: const EdgeInsets.fromLTRB(18, 96, 18, 20),
+        child: SingleChildScrollView(
+          child: Hero(
+            tag: 'obligation-${widget.docId}',
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.78),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: priorityColor(widget.priority).withOpacity(0.14),
+                      blurRadius: 30,
+                      offset: const Offset(0, 18),
                     ),
+                  ],
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (widget.priority != null) ...[
+                            PriorityBadge(priority: widget.priority!),
+                            const SizedBox(width: 10),
+                          ],
+                          const Expanded(
+                            child: Text(
+                              'Displayed from backend',
+                              style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 22),
+                      TextFormField(
+                        controller: _titleController,
+                        decoration: const InputDecoration(
+                          labelText: 'Title',
+                          prefixIcon: Icon(Icons.edit_note_rounded),
+                        ),
+                        validator: (value) => value == null || value.trim().isEmpty ? 'Title is required' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        initialValue: _category,
+                        decoration: const InputDecoration(
+                          labelText: 'Category',
+                          prefixIcon: Icon(Icons.category_rounded),
+                        ),
+                        items: AppData.categories
+                            .map((category) => DropdownMenuItem(value: category, child: Text(category)))
+                            .toList(),
+                        onChanged: (value) => setState(() => _category = value ?? _category),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _amountController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Amount',
+                          prefixIcon: Icon(Icons.attach_money_rounded),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) return 'Amount is required';
+                          if (double.tryParse(value.trim()) == null) return 'Enter a valid number';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _paidController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Paid amount',
+                          prefixIcon: Icon(Icons.payments_rounded),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) return 'Paid amount is required';
+                          final paid = double.tryParse(value.trim());
+                          final amount = double.tryParse(_amountController.text.trim()) ?? 0;
+                          if (paid == null) return 'Enter a valid number';
+                          if (paid > amount) return 'Paid cannot exceed amount';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _dateController,
+                        readOnly: true,
+                        onTap: _pickDate,
+                        decoration: const InputDecoration(
+                          labelText: 'Due date',
+                          prefixIcon: Icon(Icons.calendar_month_rounded),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      AnimatedMoneyProgress(
+                        value: (double.tryParse(_amountController.text) ?? 0) > 0
+                            ? (double.tryParse(_paidController.text) ?? 0) / (double.tryParse(_amountController.text) ?? 1)
+                            : 0,
+                        label: 'Payment progress',
+                        color: ((double.tryParse(_amountController.text) ?? 0) > 0 &&
+                                (double.tryParse(_paidController.text) ?? 0) >= (double.tryParse(_amountController.text) ?? 0))
+                            ? AppColors.green
+                            : priorityColor(widget.priority),
+                      ),
+                      const SizedBox(height: 24),
+                      PremiumButton(
+                        expanded: true,
+                        icon: _saving ? null : Icons.save_rounded,
+                        onPressed: _saving ? null : _saveData,
+                        child: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('Save changes'),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );

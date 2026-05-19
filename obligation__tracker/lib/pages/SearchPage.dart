@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:obligation__tracker/services/api_service.dart';
+import 'package:obligation__tracker/theme/app_design.dart';
 
 class SearchPage extends StatefulWidget {
-  const SearchPage({super.key});
+  final bool embedded;
+  final VoidCallback? onChanged;
+
+  const SearchPage({
+    super.key,
+    this.embedded = false,
+    this.onChanged,
+  });
 
   @override
   State<SearchPage> createState() => _SearchPageState();
 }
 
 class _SearchPageState extends State<SearchPage> {
-  final TextEditingController searchController = TextEditingController();
-  String searchType = "Title";
+  final searchController = TextEditingController();
+  String searchType = 'Title';
   late Future<List<Map<String, dynamic>>> _future;
-
-  final List<String> categories = ["University", "Installments", "Shopping", "Home", "Bills", "Other"];
-  final List<String> priorities = ["High", "Medium", "Low"];
-  final List<String> statusOptions = ["Paid", "Unpaid"];
 
   @override
   void initState() {
@@ -23,192 +27,297 @@ class _SearchPageState extends State<SearchPage> {
     _future = ApiService.getObligations();
   }
 
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
   DateTime _parseDate(dynamic value) {
     return DateTime.tryParse(value?.toString() ?? '') ?? DateTime.now();
   }
 
+  String _displayDate(dynamic value) {
+    final d = _parseDate(value);
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Search My Obligations"),
-        backgroundColor: const Color(0xFFAEECE4),
-        leading: IconButton(
-          icon: const Icon(Icons.dashboard_customize),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFAEECE4), Color(0xFFF8EEDC)],
-          ),
-        ),
-        child: Column(
-          children: [
-            _buildSearchInput(),
-            Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _future,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final docs = snapshot.data ?? [];
-                  if (docs.isEmpty) return const Center(child: Text("No obligations found."));
-
-                  final filteredDocs = docs.where((data) {
-                    final query = searchController.text.toLowerCase().trim();
-                    if (query.isEmpty) return true;
-
-                    switch (searchType) {
-                      case "Category":
-                        return (data['category'] ?? "").toString().toLowerCase() == query;
-                      case "Priority":
-                        return (data['priority'] ?? "").toString().toLowerCase() == query;
-                      case "Status":
-                        final isPaid = data['isPaid'] == true || data['status'] == 'paid';
-                        return (query == "paid" && isPaid) || (query == "unpaid" && !isPaid);
-                      case "Date":
-                        final d = _parseDate(data['dueDate']);
-                        final formatted = "${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}";
-                        return formatted == query;
-                      default:
-                        return (data['title'] ?? "").toString().toLowerCase().contains(query);
-                    }
-                  }).toList();
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: filteredDocs.length,
-                    itemBuilder: (context, index) => _buildCard(filteredDocs[index]),
-                  );
-                },
-              ),
-            ),
+    final content = AppBackground(
+      padding: EdgeInsets.fromLTRB(18, widget.embedded ? 18 : 90, 18, widget.embedded ? 96 : 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.embedded) ...[
+            const Text('Search', style: TextStyle(color: AppColors.ink, fontSize: 28, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 6),
+            const Text('Find obligations by title, category, status, priority, or date.', style: TextStyle(color: AppColors.muted)),
+            const SizedBox(height: 18),
           ],
-        ),
+          _buildSearchInput(),
+          const SizedBox(height: 14),
+          Expanded(
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) return const SkeletonList();
+                if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}'));
+
+                final docs = _filtered(snapshot.data ?? []);
+                if (docs.isEmpty) {
+                  return const _SearchEmpty();
+                }
+
+                return ListView.separated(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) => _SearchResultCard(data: docs[index], index: index),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
+
+    if (widget.embedded) return content;
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(title: const Text('Search', style: TextStyle(fontWeight: FontWeight.w900))),
+      body: content,
+    );
+  }
+
+  List<Map<String, dynamic>> _filtered(List<Map<String, dynamic>> docs) {
+    final query = searchController.text.toLowerCase().trim();
+    if (query.isEmpty) return docs;
+
+    return docs.where((data) {
+      switch (searchType) {
+        case 'Category':
+          return (data['category'] ?? '').toString().toLowerCase() == query;
+        case 'Priority':
+          return obligationPriority(data)?.toLowerCase() == query;
+        case 'Status':
+          final status = (data['displayStatus'] ?? data['status'] ?? '').toString().toLowerCase();
+          return status == query || (query == 'unpaid' && status == 'unpaid');
+        case 'Date':
+          return _displayDate(data['dueDate']) == query;
+        default:
+          return (data['title'] ?? '').toString().toLowerCase().contains(query);
+      }
+    }).toList();
   }
 
   Widget _buildSearchInput() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: searchController,
-              readOnly: searchType != "Title",
-              onTap: () {
-                if (searchType == "Date") _pickDate();
-                if (searchType == "Category") _showOptions(categories);
-                if (searchType == "Priority") _showOptions(priorities);
-                if (searchType == "Status") _showOptions(statusOptions);
-              },
-              decoration: InputDecoration(
-                hintText: "Search by $searchType",
-                prefixIcon: const Icon(Icons.search, color: Colors.teal),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.9),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-              ),
-              onChanged: (_) => setState(() {}),
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: searchController,
+            readOnly: searchType != 'Title',
+            onTap: () {
+              if (searchType == 'Date') _pickDate();
+              if (searchType == 'Category') _showOptions(AppData.categories);
+              if (searchType == 'Priority') _showOptions(AppData.priorities);
+              if (searchType == 'Status') _showOptions(AppData.statuses);
+            },
+            decoration: InputDecoration(
+              hintText: 'Search by $searchType',
+              prefixIcon: const Icon(Icons.search_rounded),
             ),
+            onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(width: 10),
-          _buildFilterButton(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterButton() {
-    return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
-      child: PopupMenuButton<String>(
-        icon: const Icon(Icons.tune, color: Colors.teal),
-        onSelected: (val) {
-          setState(() {
-            searchType = val;
-            searchController.clear();
-          });
-        },
-        itemBuilder: (context) => const [
-          PopupMenuItem(value: "Title", child: Text("Search by Title")),
-          PopupMenuItem(value: "Category", child: Text("Select Category")),
-          PopupMenuItem(value: "Status", child: Text("Select Status")),
-          PopupMenuItem(value: "Priority", child: Text("Select Priority")),
-          PopupMenuItem(value: "Date", child: Text("Select Date")),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCard(Map<String, dynamic> data) {
-    final d = _parseDate(data['dueDate']);
-    final displayDate = "${d.day}/${d.month}/${d.year}";
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: ListTile(
-        title: Text(data['title'] ?? 'No Title', style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("${data['category']} - $displayDate"),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text("\$${data['amount'] ?? 0}", style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
-            Text(
-              data['priority'] ?? 'Low',
-              style: TextStyle(color: _getPriorityColor(data['priority']), fontSize: 10, fontWeight: FontWeight.bold),
-            ),
-          ],
         ),
-      ),
+        const SizedBox(width: 10),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: PopupMenuButton<String>(
+            icon: const Icon(Icons.tune_rounded, color: AppColors.teal),
+            onSelected: (value) {
+              setState(() {
+                searchType = value;
+                searchController.clear();
+              });
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'Title', child: Text('Title')),
+              PopupMenuItem(value: 'Category', child: Text('Category')),
+              PopupMenuItem(value: 'Status', child: Text('Status')),
+              PopupMenuItem(value: 'Priority', child: Text('Priority')),
+              PopupMenuItem(value: 'Date', child: Text('Date')),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   void _showOptions(List<String> options) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => ListView(
-        shrinkWrap: true,
-        children: options.map((opt) => ListTile(
-          title: Text(opt, textAlign: TextAlign.center),
-          onTap: () {
-            setState(() => searchController.text = opt);
-            Navigator.pop(context);
-          },
-        )).toList(),
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: options
+              .map(
+                (option) => ActionChip(
+                  avatar: searchType == 'Category'
+                      ? Icon(categoryIcon(option), size: 18, color: AppColors.teal)
+                      : null,
+                  label: Text(option),
+                  onPressed: () {
+                    setState(() => searchController.text = option);
+                    Navigator.pop(context);
+                  },
+                ),
+              )
+              .toList(),
+        ),
       ),
     );
   }
 
   Future<void> _pickDate() async {
-    DateTime? picked = await showDatePicker(
+    final picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
-    if (picked != null) {
-      setState(() {
-        searchController.text = "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
-      });
-    }
+    if (picked == null) return;
+    setState(() => searchController.text = _displayDate(picked));
+  }
+}
+
+class _SearchResultCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final int index;
+
+  const _SearchResultCard({required this.data, required this.index});
+
+  DateTime _parseDate(dynamic value) {
+    return DateTime.tryParse(value?.toString() ?? '') ?? DateTime.now();
   }
 
-  Color _getPriorityColor(String? p) {
-    if (p == "High") return Colors.red;
-    if (p == "Medium") return Colors.orange;
-    return Colors.green;
+  @override
+  Widget build(BuildContext context) {
+    final priority = obligationPriority(data);
+    final category = data['category']?.toString() ?? 'Others';
+    final date = _parseDate(data['dueDate']);
+    final amount = ((data['amount'] ?? 0) as num).toDouble();
+    final paid = ((data['paid'] ?? 0) as num).toDouble();
+    final isPaid = obligationIsPaid(data);
+    final progress = amount > 0 ? paid / amount : 0.0;
+    final accent = isPaid ? AppColors.green : priorityColor(priority);
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: Duration(milliseconds: 320 + index * 60),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(offset: Offset(0, 18 * (1 - value)), child: child),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFE9FBF5), Color(0xFFFFFFFF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: accent.withOpacity(0.14)),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withOpacity(0.12),
+              blurRadius: 22,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.13),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(categoryIcon(category), color: accent),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(data['title']?.toString() ?? 'No title', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                      const SizedBox(height: 4),
+                      Text('$category - ${date.day}/${date.month}/${date.year}', style: const TextStyle(color: AppColors.muted)),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('\$${amount.toStringAsFixed(0)}', style: const TextStyle(color: AppColors.ink, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 6),
+                    if (priority != null) PriorityBadge(priority: priority),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            AnimatedMoneyProgress(
+              value: isPaid ? 1 : progress,
+              label: 'Amount paid',
+              color: accent,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchEmpty extends StatelessWidget {
+  const _SearchEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.92, end: 1),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.elasticOut,
+      builder: (context, value, child) => Transform.scale(scale: value, child: child),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded, size: 56, color: AppColors.teal),
+            SizedBox(height: 12),
+            Text('No matching obligations', style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w900, fontSize: 18)),
+          ],
+        ),
+      ),
+    );
   }
 }

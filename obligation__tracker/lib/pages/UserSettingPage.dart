@@ -8,7 +8,9 @@ import 'package:obligation__tracker/pages/HomePage.dart';
 import 'package:obligation__tracker/services/api_service.dart';
 
 class UserSettingsPage extends StatefulWidget {
-  const UserSettingsPage({super.key});
+  final bool embedded;
+
+  const UserSettingsPage({super.key, this.embedded = false});
 
   @override
   State<UserSettingsPage> createState() => _UserSettingsPageState();
@@ -99,7 +101,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true, 
-      appBar: AppBar(
+      appBar: widget.embedded ? null : AppBar(
         title: Text('Settings', style: TextStyle(fontWeight: FontWeight.bold, color: primaryTextColor)), 
         backgroundColor: Colors.transparent, 
         elevation: 0,
@@ -116,7 +118,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
           ),
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 120, 16, 16),
+          padding: EdgeInsets.fromLTRB(16, widget.embedded ? 18 : 120, 16, widget.embedded ? 100 : 16),
           child: Column(
             children: [
               _buildWideCard(
@@ -233,7 +235,7 @@ class _UserSettingsPageState extends State<UserSettingsPage> {
                 child: Column(
                   children: [
                     Text('App Version 1.0.0', style: TextStyle(color: primaryTextColor.withOpacity(0.5), fontSize: 14)),
-                    Text('Obligation Tracker © 2025', style: TextStyle(color: primaryTextColor.withOpacity(0.4), fontSize: 12)),
+                    Text('Obligation Tracker 2025', style: TextStyle(color: primaryTextColor.withOpacity(0.4), fontSize: 12)),
                   ],
                 ),
               ),

@@ -1,26 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:obligation__tracker/pages/HomePage.dart';
 import 'package:obligation__tracker/pages/LoginPage.dart';
 import 'package:obligation__tracker/pages/RegisterPage.dart';
 import 'package:obligation__tracker/pages/UserSettingPage.dart';
-import 'firebase_options.dart';
+import 'package:obligation__tracker/theme/app_design.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // Initialize Firebase (requires platform config or firebase_options.dart)
- // try {
-   // await FirebaseService.initialize();
- // } catch (e) {
-   // if (kDebugMode) print('Firebase init warning: $e');
- // }
 
   await Supabase.initialize(
     url: 'https://nffstjkgclephibkgsao.supabase.co', // Replace with your URL
@@ -39,14 +26,40 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Obligation Tracker',
       debugShowCheckedModeBanner: false,
-      
+
       theme: ThemeData(
-        primarySwatch: Colors.teal,
-        scaffoldBackgroundColor: Colors.white,
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.teal,
+          primary: AppColors.teal,
+          secondary: AppColors.aqua,
+          surface: AppColors.surface,
+        ),
+        scaffoldBackgroundColor: AppColors.cream,
+        fontFamily: 'Roboto',
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          foregroundColor: AppColors.deepTeal,
+          elevation: 0,
+          centerTitle: false,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.86),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: const BorderSide(color: AppColors.aqua, width: 1.5),
+          ),
+        ),
       ),
 
-      home: const HomePage(), 
-      
+      home: const HomePage(),
+
       routes: {
         '/login': (context) => const LoginPage(),
         '/register': (context) => const RegisterPage(),
@@ -54,4 +67,5 @@ class MyApp extends StatelessWidget {
         '/home': (context) => const HomePage(),
       },
     );
-  }}
+  }
+}
