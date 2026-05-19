@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Feedback = require('../models/feedbackModel');
 
 exports.getAllFeedbacks = async (req, res) => {
@@ -11,6 +12,9 @@ try {
 
 exports.getFeedback = async (req, res) => {
 try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ success: false, error: 'Invalid ID format' });
+    }
     const feedback = await Feedback.findById(req.params.id).populate('userId', 'name email');
     if (!feedback)
     return res.status(404).json({ success: false, error: 'Feedback not found' });
@@ -43,6 +47,9 @@ try {
 
 exports.updateFeedback = async (req, res) => {
 try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ success: false, error: 'Invalid ID format' });
+    }
     const feedback = await Feedback.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!feedback)
     return res.status(404).json({ success: false, error: 'Feedback not found' });
@@ -54,6 +61,9 @@ try {
 
 exports.deleteFeedback = async (req, res) => {
 try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ success: false, error: 'Invalid ID format' });
+    }
     const feedback = await Feedback.findByIdAndDelete(req.params.id);
     if (!feedback)
     return res.status(404).json({ success: false, error: 'Feedback not found' });

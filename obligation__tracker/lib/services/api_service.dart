@@ -1,13 +1,22 @@
 import 'dart:convert';
-
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:3000/api',
-  );
+  static String get baseUrl {
+    const String envUrl = String.fromEnvironment('API_BASE_URL');
+    if (envUrl.isNotEmpty) {
+      return envUrl;
+    }
+    // Automatically use 10.0.2.2 for Android emulators
+    if (!kIsWeb && Platform.isAndroid) {
+      return 'http://10.0.2.2:3000/api';
+    }
+    return 'http://127.0.0.1:3000/api';
+  }
+
 
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();

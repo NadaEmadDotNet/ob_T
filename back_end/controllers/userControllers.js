@@ -182,7 +182,7 @@ exports.updateProfile = async (req, res) => {
 
 exports.uploadProfileAvatar = async (req, res) => {
     try {
-        const { imageBase64, fileName } = req.body;
+        const { imageBase64, fileName } = req.body || {};
 
         if (!imageBase64) {
             return res.status(400).json({ message: "Image is required" });
@@ -226,9 +226,38 @@ exports.uploadProfileAvatar = async (req, res) => {
     }
 };
 
+// Upload Avatar using Multer (Bonus endpoint)
+exports.uploadProfileAvatarMulter = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: "No file uploaded or file type not allowed" });
+        }
 
+        const profileImageUrl = `${req.protocol}://${req.get("host")}/uploads/avatars/${req.file.filename}`;
 
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { profileImageUrl },
+            { new: true, runValidators: true }
+        ).select("-password");
 
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Avatar uploaded successfully using Multer",
+            profileImageUrl,
+            data: user
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+};
 
 
 // 3. Change Password (FIXED)

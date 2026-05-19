@@ -2,6 +2,7 @@
 
 const mongoose = require("mongoose");
 
+//// validation mongoose
 const obligationSchema = new mongoose.Schema(
     {
         title: {
@@ -14,17 +15,6 @@ const obligationSchema = new mongoose.Schema(
             type: Number,
             required: true,
             min: 0,
-        },
-
-        dueDate: {
-            type: Date,
-            required: true,
-        },
-
-        priority: {
-            type: String,
-            enum: ["High", "Medium", "Low"],
-            default: "Low",
         },
 
         paid: {
@@ -42,7 +32,18 @@ const obligationSchema = new mongoose.Schema(
             type: String,
             enum: ["paid", "unpaid"],
             default: "unpaid",
-        }, 
+        },
+
+        priority: {
+            type: String,
+            enum: ["Low", "Medium", "High", "Overdue", null],
+            default: null,
+        },
+
+        dueDate: {
+            type: Date,
+            required: true,
+        },
 
         category: {
             type: String,
@@ -55,10 +56,6 @@ const obligationSchema = new mongoose.Schema(
                 "Utilities",
                 "Work",
                 "Others",
-                "University",
-                "Shopping",
-                "Installments",
-                "Other"
             ],
             required: true,
         },
